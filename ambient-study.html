@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice-Controlled Ambient Desk Companion</title>
+    <style>
+        :root {
+            --bg-dark: #09090b;
+            --surface-bg: #14141b;
+            --text-main: #ffffff;
+            --text-muted: #8a8a93;
+            --focus-red: #ef4444;
+            --break-green: #10b981;
+            --voice-blue: #06b6d4;
+            --music-purple: #a855f7;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #companion-container {
+            width: 100%;
+            max-width: 550px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        #timer-card {
+            background-color: var(--surface-bg);
+            border: 4px solid #27273a;
+            border-radius: 28px;
+            padding: 35px 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            transition: border-color 0.3s ease;
+        }
+
+        #timer-card.focus-active { border-color: var(--focus-red); }
+        #timer-card.break-active { border-color: var(--break-green); }
+
+        #current-mode-label {
+            font-size: 1.4rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 800;
+            color: var(--text-muted);
+            margin: 0 0 10px 0;
+        }
+
+        .focus-active #current-mode-label { color: var(--focus-red); }
+        .break-active #current-mode-label { color: var(--break-green); }
+
+        #time-digits {
+            font-size: 5.5rem;
+            font-weight: 900;
+            font-variant-numeric: tabular-nums;
+            margin: 0 0 20px 0;
+            line-height: 1;
+        }
+
+        .button-cluster {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .action-btn {
+            background-color: #1f1f2e;
+            border: 2px solid #2e2e42;
+            color: var(--text-main);
+            padding: 14px 10px;
+            border-radius: 14px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.15s ease;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .action-btn:active { transform: scale(0.96); }
+        #btn-focus { border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; }
+        #btn-focus:hover { background-color: rgba(239, 68, 68, 0.1); }
+        #btn-break { border-color: rgba(16, 185, 129, 0.4); color: #6ee7b7; }
+        #btn-break:hover { background-color: rgba(16, 185, 129, 0.1); }
+        
+        #btn-music { 
+            border-color: rgba(168, 85, 247, 0.4); 
+            color: #d8b4fe;
+            grid-column: span 2;
+        }
+        #btn-music.music-playing {
+            background-color: rgba(168, 85, 247, 0.2);
+            border-color: var(--music-purple);
+            color: #ffffff;
+        }
+
+        .btn-reset-sub {
+            background-color: #161622;
+            border: 2px dashed #3c3c56;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            padding: 10px;
+            border-radius: 10px;
+        }
+        .btn-reset-sub:hover {
+            border-color: var(--text-muted);
+            color: #fff;
+        }
+
+        .settings-cluster {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #27273a;
+        }
+        .setting-field {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+        .setting-field label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        .setting-field input {
+            background-color: #1f1f2e;
+            border: 2px solid #2e2e42;
+            color: #fff;
+            padding: 8px;
+            border-radius: 8px;
+            width: 70px;
+            text-align: center;
+            font-size: 1rem;
+            font-weight: 700;
+        }
+
+        #voice-bar {
+            background-color: rgba(6, 182, 212, 0.08);
+            border: 1px solid rgba(6, 182, 212, 0.25);
+            border-radius: 16px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            text-align: left;
+            opacity: 0.3;
+            transform: scale(0.98);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        #voice-bar.listening-active {
+            opacity: 1;
+            transform: scale(1);
+            background-color: rgba(6, 182, 212, 0.18);
+            border-color: var(--voice-blue);
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.25);
+        }
+
+        .mic-indicator {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: #3a3a4c;
+            flex-shrink: 0;
+        }
+
+        .listening-active .mic-indicator {
+            background-color: var(--voice-blue);
+            box-shadow: 0 0 12px var(--voice-blue);
+            animation: pulse-glow 1.2s infinite ease-in-out;
+        }
+
+        #speech-preview-text {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .listening-active #speech-preview-text { color: #ffffff; }
+
+        #vocabulary-card {
+            background-color: #111116;
+            border-radius: 16px;
+            padding: 20px;
+            text-align: left;
+        }
+
+        .command-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .command-row {
+            display: flex;
+            justify-content: space-between;
+            background-color: #181824;
+            padding: 9px 14px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+        }
+
+        .keyword-token {
+            color: var(--voice-blue);
+            font-weight: 700;
+            font-family: monospace;
+        }
+
+        @keyframes pulse-glow {
+            0% { transform: scale(1); opacity: 0.7; }
+            50% { transform: scale(1.15); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.7; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="companion-container">
+        <div id="timer-card" class="focus-active">
+            <p id="current-mode-label">Focus Block</p>
+            <p id="time-digits">25:00</p>
+            
+            <div class="button-cluster">
+                <button id="btn-focus" class="action-btn">🎯 Start Focus</button>
+                <button id="btn-break" class="action-btn">☕ Start Break</button>
+                <button id="btn-reset-focus" class="action-btn btn-reset-sub">🔄 Reset Focus</button>
+                <button id="btn-reset-break" class="action-btn btn-reset-sub">🔄 Reset Break</button>
+            </div>
+            <button id="btn-music" class="action-btn">🎵 Start Ambient Music</button>
+
+            <div class="settings-cluster">
+                <div class="setting-field">
+                    <label for="input-focus-length">Focus (Min)</label>
+                    <input type="number" id="input-focus-length" min="1" max="180" value="25">
+                </div>
+                <div class="setting-field">
+                    <label for="input-break-length">Break (Min)</label>
+                    <input type="number" id="input-break-length" min="1" max="60" value="5">
+                </div>
+            </div>
+        </div>
+
+        <div id="voice-bar">
+            <div class="mic-indicator"></div>
+            <div>
+                <div id="voice-status-title" style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; letter-spacing: 0.5px;">Standby</div>
+                <p id="speech-preview-text">Say "Companion" to unlock...</p>
+            </div>
+        </div>
+
+        <div id="vocabulary-card">
+            <strong style="color: var(--voice-blue); font-size: 1.1rem;">🎙️ Full Voice Dictionary (Wake Word: "Companion")</strong>
+            <div class="command-grid">
+                <div class="command-row"><span>Audio Music Space:</span><span class="keyword-token">"start music", "stop music", "play study music"</span></div>
+                <div class="command-row"><span>Interval Duration Controls:</span><span class="keyword-token">"set focus block to 30 minutes", "increase break time by 5 minutes"</span></div>
+                <div class="command-row"><span>Cycle Changes:</span><span class="keyword-token">"start focus", "start break", "progress time", "rest time"</span></div>
+                <div class="command-row"><span>Time Shifts:</span><span class="keyword-token">"skip forward 4 minutes and 30 seconds"</span></div>
+                <div class="command-row"><span>Execution States:</span><span class="keyword-token">"pause", "resume", "how much time left?" / "time left?"</span></div>
+                <div class="command-row"><span>Target Resets:</span><span class="keyword-token">"reset focus", "reset break", "reset timer"</span></div>
+                <div class="command-row"><span>Social Dialogue:</span><span class="keyword-token">"hello", "how are you"</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const timerCard = document.getElementById('timer-card');
+        const modeLabel = document.getElementById('current-mode-label');
+        const digitsDisplay = document.getElementById('time-digits');
+        const voiceBar = document.getElementById('voice-bar');
+        const voiceStatusTitle = document.getElementById('voice-status-title');
+        const speechPreviewText = document.getElementById('speech-preview-text');
+
+        const btnFocus = document.getElementById('btn-focus');
+        const btnBreak = document.getElementById('btn-break');
+        const btnMusic = document.getElementById('btn-music');
+        const btnResetFocus = document.getElementById('btn-reset-focus');
+        const btnResetBreak = document.getElementById('btn-reset-break');
+
+        const inputFocusLength = document.getElementById('input-focus-length');
+        const inputBreakLength = document.getElementById('input-break-length');
+
+        let focusBlockMinutes = 25;
+        let breakIntervalMinutes = 5;
+
+        let currentMode = "focus"; 
+        let secondsRemaining = 25 * 60; 
+        let countdownInterval = null;
+        let isRunning = false;
+
+        let speechRecognizer = null;
+        let isAssistantAwake = false;
+        let silenceTimeoutTimer = null;
+        let blockWakeWord = false;
+        let recognitionExplicitlyClosed = false;
+
+        let musicAudioCtx = null;
+        let subBassOsc = null;
+        let voicePadOsc1 = null;
+        let voicePadOsc2 = null;
+        let evolutionLfo = null;
+        let musicGainNode = null;
+        let isMusicPlaying = false;
+
+        const textualNumbers = {
+            'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+            'fifteen': 15, 'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50
+        };
+
+        btnFocus.addEventListener('click', () => { handleStartCommand("focus"); });
+        btnBreak.addEventListener('click', () => { handleStartCommand("break"); });
+        btnMusic.addEventListener('click', toggleAmbientMusicStream);
+        
+        btnResetFocus.addEventListener('click', () => {
+            pauseClockExecution();
+            resetModeValues("focus");
+            speakAudioFeedback(`Focus clock reset back to ${focusBlockMinutes} minutes.`);
+        });
+
+        btnResetBreak.addEventListener('click', () => {
+            pauseClockExecution();
+            resetModeValues("break");
+            speakAudioFeedback(`Break clock reset back to ${breakIntervalMinutes} minutes.`);
+        });
+
+        inputFocusLength.addEventListener('change', () => {
+            focusBlockMinutes = Math.max(1, parseInt(inputFocusLength.value, 10) || 25);
+            if (currentMode === "focus" && !isRunning) {
+                secondsRemaining = focusBlockMinutes * 60;
+                renderDigitsUI();
+            }
+        });
+
+        inputBreakLength.addEventListener('change', () => {
+            breakIntervalMinutes = Math.max(1, parseInt(inputBreakLength.value, 10) || 5);
+            if (currentMode === "break" && !isRunning) {
+                secondsRemaining = breakIntervalMinutes * 60;
+                renderDigitsUI();
+            }
+        });
+
+        function playSoundNotification(type) {
+            if (!(window.AudioContext || window.webkitAudioContext)) return;
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            if (type === 'wake') {
+                [523.25, 659.25].forEach((f, i) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.frequency.setValueAtTime(f, audioCtx.currentTime + (i * 0.08));
+                    gain.gain.setValueAtTime(0.04, audioCtx.currentTime + (i * 0.08));
+                    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + (i * 0.08) + 0.12);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(audioCtx.currentTime + (i * 0.08)); osc.stop(audioCtx.currentTime + (i * 0.08) + 0.12);
+                });
+            } 
+            else if (type === 'alarm') {
+                for(let i = 0; i < 4; i++) {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(880, audioCtx.currentTime + (i * 0.18));
+                    gain.gain.setValueAtTime(0.02, audioCtx.currentTime + (i * 0.18));
+                    gain.gain.linearRampToValueAtTime(0.0001, audioCtx.currentTime + (i * 0.18) + 0.1);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(audioCtx.currentTime + (i * 0.18)); osc.stop(audioCtx.currentTime + (i * 0.18) + 0.1);
+                }
+            }
+        }
+
+        function toggleAmbientMusicStream() {
+            if (isMusicPlaying) {
+                stopAmbientMusicStream();
+                speakAudioFeedback("Music stopped.");
+            } else {
+                startAmbientMusicStream();
+                speakAudioFeedback("Continuous focus drone activated.");
+            }
+        }
+
+        function startAmbientMusicStream() {
+            if (isMusicPlaying) return;
+            try {
+                musicAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                musicGainNode = musicAudioCtx.createGain();
+                
+                subBassOsc = musicAudioCtx.createOscillator();
+                subBassOsc.type = 'sine';
+                subBassOsc.frequency.setValueAtTime(55, musicAudioCtx.currentTime);
+                
+                voicePadOsc1 = musicAudioCtx.createOscillator();
+                voicePadOsc1.type = 'sine';
+                voicePadOsc1.frequency.setValueAtTime(110, musicAudioCtx.currentTime);
+                
+                voicePadOsc2 = musicAudioCtx.createOscillator();
+                voicePadOsc2.type = 'triangle';
+                voicePadOsc2.frequency.setValueAtTime(110.4, musicAudioCtx.currentTime);
+                
+                const masterDroneFilter = musicAudioCtx.createBiquadFilter();
+                masterDroneFilter.type = 'lowpass';
+                masterDroneFilter.frequency.setValueAtTime(180, musicAudioCtx.currentTime);
+                
+                const padGainModulator = musicAudioCtx.createGain();
+                evolutionLfo = musicAudioCtx.createOscillator();
+                evolutionLfo.frequency.setValueAtTime(1.0, musicAudioCtx.currentTime);
+                
+                const evolutionGain = musicAudioCtx.createGain();
+                evolutionGain.gain.setValueAtTime(0.015, musicAudioCtx.currentTime);
+                
+                evolutionLfo.connect(evolutionGain);
+                evolutionGain.connect(padGainModulator.gain);
+                
+                const subGain = musicAudioCtx.createGain(); subGain.gain.setValueAtTime(0.045, musicAudioCtx.currentTime);
+                const pad1Gain = musicAudioCtx.createGain(); pad1Gain.gain.setValueAtTime(0.02, musicAudioCtx.currentTime);
+                const pad2Gain = musicAudioCtx.createGain(); pad2Gain.gain.setValueAtTime(0.01, musicAudioCtx.currentTime);
+                
+                subBassOsc.connect(subGain); subGain.connect(masterDroneFilter);
+                voicePadOsc1.connect(pad1Gain); pad1Gain.connect(padGainModulator);
+                voicePadOsc2.connect(pad2Gain); pad2Gain.connect(padGainModulator);
+                padGainModulator.connect(masterDroneFilter);
+                
+                musicGainNode.gain.setValueAtTime(0.0, musicAudioCtx.currentTime);
+                musicGainNode.gain.linearRampToValueAtTime(1.0, musicAudioCtx.currentTime + 2.5);
+                
+                masterDroneFilter.connect(musicGainNode);
+                musicGainNode.connect(musicAudioCtx.destination);
+                
+                subBassOsc.start();
+                voicePadOsc1.start();
+                voicePadOsc2.start();
+                evolutionLfo.start();
+                
+                isMusicPlaying = true;
+                btnMusic.classList.add('music-playing');
+                btnMusic.innerText = "🎵 Stop Ambient Music";
+            } catch (e) {
+                console.error("Audio Context initialization vector block:", e);
+            }
+        }
+
+        function stopAmbientMusicStream() {
+            if (!isMusicPlaying) return;
+            if (musicGainNode && musicAudioCtx) {
+                musicGainNode.gain.setValueAtTime(musicGainNode.gain.value, musicAudioCtx.currentTime);
+                musicGainNode.gain.linearRampToValueAtTime(0.0, musicAudioCtx.currentTime + 0.5);
+                setTimeout(() => {
+                    try {
+                        subBassOsc.stop(); 
+                        voicePadOsc1.stop();
+                        voicePadOsc2.stop();
+                        evolutionLfo.stop();
+                        musicAudioCtx.close();
+                    } catch(err){}
+                }, 600);
+            }
+            isMusicPlaying = false;
+            btnMusic.classList.remove('music-playing');
+            btnMusic.innerText = "🎵 Start Ambient Music";
+        }
+
+        function initAmbientCompanion() {
+            const SpeechAPI = window.webkitSpeechRecognition || window.SpeechRecognition;
+            if (!SpeechAPI) {
+                speechPreviewText.innerText = "Speech Recognition API unsupported.";
+                return;
+            }
+
+            speechRecognizer = new SpeechAPI();
+            speechRecognizer.continuous = true;
+            speechRecognizer.interimResults = true;
+            speechRecognizer.lang = 'en-US';
+
+            speechRecognizer.onend = () => { 
+                if (!recognitionExplicitlyClosed) {
+                    try { speechRecognizer.start(); } catch(e) {}
+                }
+            };
+
+            speechRecognizer.onresult = (event) => {
+                let liveChunk = "";
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    liveChunk += event.results[i][0].transcript;
+                }
+
+                const liveSentence = liveChunk.toLowerCase().trim();
+
+                if (liveSentence.includes("companion") && !isAssistantAwake && !blockWakeWord) {
+                    isAssistantAwake = true;
+                    playSoundNotification('wake');
+                    voiceBar.classList.add('listening-active');
+                    voiceStatusTitle.innerText = "Listening...";
+                    speechPreviewText.innerText = "Waiting for instruction...";
+                    refreshSilenceTimeout();
+                }
+
+                if (isAssistantAwake) {
+                    refreshSilenceTimeout();
+                    const segments = liveSentence.split("companion");
+                    const directExtract = segments[segments.length - 1].trim();
+                    
+                    if (directExtract.length > 0) {
+                        speechPreviewText.innerText = `"${directExtract}"`;
+                        if (event.results[event.results.length - 1].isFinal) {
+                            finalizeAndExecuteCommand(directExtract);
+                        }
+                    }
+                }
+            };
+
+            speechRecognizer.start();
+        }
+
+        function refreshSilenceTimeout() {
+            clearTimeout(silenceTimeoutTimer);
+            silenceTimeoutTimer = setTimeout(() => {
+                if (isAssistantAwake) {
+                    const segments = speechPreviewText.innerText.replace(/"/g, "").trim();
+                    if (segments !== "waiting for instruction..." && segments.length > 0) {
+                        finalizeAndExecuteCommand(segments);
+                    } else {
+                        retreatVoiceHUD();
+                    }
+                }
+            }, 5000);
+        }
+
+        function retreatVoiceHUD() {
+            clearTimeout(silenceTimeoutTimer);
+            voiceBar.classList.remove('listening-active');
+            voiceStatusTitle.innerText = "Standby";
+            speechPreviewText.innerText = 'Say "Companion" to unlock...';
+            isAssistantAwake = false;
+        }
+
+        function finalizeAndExecuteCommand(rawCommandText) {
+            if (!isAssistantAwake) return;
+            blockWakeWord = true;
+
+            const cleanCommand = rawCommandText.toLowerCase().trim();
+
+            if (cleanCommand.length > 0) {
+                if (cleanCommand.includes("focus block") || cleanCommand.includes("focus time") || cleanCommand.includes("work block")) {
+                    handleIntervalConfigurationVoiceCommand(cleanCommand, "focus");
+                }
+                else if (cleanCommand.includes("break time") || cleanCommand.includes("break interval") || cleanCommand.includes("rest time")) {
+                    handleIntervalConfigurationVoiceCommand(cleanCommand, "break");
+                }
+                else if (cleanCommand.includes("stop music") || cleanCommand.match(/(stop|silence|turn off|kill)\s*(music|soundtrack|ambient)/)) {
+                    if (isMusicPlaying) {
+                        stopAmbientMusicStream();
+                        speakAudioFeedback("Music layer silenced.");
+                    } else {
+                        speakAudioFeedback("Music is already stopped.");
+                    }
+                }
+                else if (cleanCommand.match(/(start|play|turn on)?\s*(music|study music|background music)/)) {
+                    if (!isMusicPlaying) {
+                        startAmbientMusicStream();
+                        speakAudioFeedback("Ambient study drone active.");
+                    } else {
+                        speakAudioFeedback("Music layer is already active.");
+                    }
+                }
+                else if (cleanCommand.includes("skip") || cleanCommand.includes("advance") || cleanCommand.includes("forward")) {
+                    handleTimeSkipCalculations(cleanCommand);
+                }
+                else if (cleanCommand.includes("reset focus")) {
+                    pauseClockExecution();
+                    resetModeValues("focus");
+                    speakAudioFeedback(`Focus clock reset back to ${focusBlockMinutes} minutes.`);
+                }
+                else if (cleanCommand.includes("reset break")) {
+                    pauseClockExecution();
+                    resetModeValues("break");
+                    speakAudioFeedback(`Break clock reset back to ${breakIntervalMinutes} minutes.`);
+                }
+                else if (cleanCommand.match(/(reset|clear)\s*(timer|clock|system)/) || cleanCommand === "reset") {
+                    pauseClockExecution();
+                    resetModeValues("focus");
+                    speakAudioFeedback("Timer system reset back to initial focus state.");
+                }
+                else if (cleanCommand.match(/(how much|what)\s*(time|remaining|left)/) || cleanCommand.includes("time left")) {
+                    reportTimeRemainingAloud();
+                }
+                else if (cleanCommand.match(/(start|begin|go|run)?\s*(focus|work|study|progress time)/)) {
+                    handleStartCommand("focus");
+                }
+                else if (cleanCommand.match(/(start|begin|take|go on)?\s*(break|rest|chill|rest time)/)) {
+                    handleStartCommand("break");
+                }
+                else if (cleanCommand.match(/^(pause|stop|hold|freeze)$/) || cleanCommand.match(/(pause|stop)\s*(timer|clock|countdown)/)) {
+                    pauseClockExecution();
+                    speakAudioFeedback("Timer paused.");
+                }
+                else if (cleanCommand.match(/^(resume|continue|unpause)$/) || cleanCommand.match(/resume\s*(timer|clock|countdown)/)) {
+                    startClockExecution();
+                    speakAudioFeedback("Resuming countdown.");
+                }
+                else if (cleanCommand.match(/(hello|hi|hey|greetings|how are you)/)) {
+                    speakAudioFeedback("Hello. I am here and ready to track your production cycles.");
+                }
+            }
+
+            retreatVoiceHUD();
+            setTimeout(() => { blockWakeWord = false; }, 1500);
+        }
+
+        function handleIntervalConfigurationVoiceCommand(phrase, type) {
+            let isolatedAmount = 0;
+            const digitMatches = phrase.match(/\d+/);
+            if (digitMatches) {
+                isolatedAmount = parseInt(digitMatches[0], 10);
+            } else {
+                for (let key in textualNumbers) {
+                    if (phrase.includes(key)) { isolatedAmount = textualNumbers[key]; break; }
+                }
+            }
+
+            if (isolatedAmount === 0) {
+                speakAudioFeedback(`I couldn't identify the target minutes for the configuration update.`);
+                return;
+            }
+
+            if (phrase.includes("increase") || phrase.includes("add")) {
+                if (type === "focus") {
+                    focusBlockMinutes += isolatedAmount;
+                    inputFocusLength.value = focusBlockMinutes;
+                    speakAudioFeedback(`Increased focus block length by ${isolatedAmount} minutes. It is now ${focusBlockMinutes} minutes.`);
+                } else {
+                    breakIntervalMinutes += isolatedAmount;
+                    inputBreakLength.value = breakIntervalMinutes;
+                    speakAudioFeedback(`Increased break length by ${isolatedAmount} minutes. It is now ${breakIntervalMinutes} minutes.`);
+                }
+            } 
+            else if (phrase.includes("decrease") || phrase.includes("reduce") || phrase.includes("subtract")) {
+                if (type === "focus") {
+                    focusBlockMinutes = Math.max(1, focusBlockMinutes - isolatedAmount);
+                    inputFocusLength.value = focusBlockMinutes;
+                    speakAudioFeedback(`Decreased focus block length by ${isolatedAmount} minutes. It is now ${focusBlockMinutes} minutes.`);
+                } else {
+                    breakIntervalMinutes = Math.max(1, breakIntervalMinutes - isolatedAmount);
+                    inputBreakLength.value = breakIntervalMinutes;
+                    speakAudioFeedback(`Decreased break length by ${isolatedAmount} minutes. It is now ${breakIntervalMinutes} minutes.`);
+                }
+            } 
+            else {
+                if (type === "focus") {
+                    focusBlockMinutes = isolatedAmount;
+                    inputFocusLength.value = focusBlockMinutes;
+                    speakAudioFeedback(`Set focus block length to ${focusBlockMinutes} minutes.`);
+                } else {
+                    breakIntervalMinutes = isolatedAmount;
+                    inputBreakLength.value = breakIntervalMinutes;
+                    speakAudioFeedback(`Set break length to ${breakIntervalMinutes} minutes.`);
+                }
+            }
+
+            if (!isRunning) {
+                if (currentMode === "focus" && type === "focus") {
+                    secondsRemaining = focusBlockMinutes * 60;
+                } else if (currentMode === "break" && type === "break") {
+                    secondsRemaining = breakIntervalMinutes * 60;
+                }
+                renderDigitsUI();
+            }
+        }
+
+        function handleTimeSkipCalculations(phrase) {
+            let totalSecondsToSkip = 0;
+            let minutesFound = 0;
+            let secondsFound = 0;
+
+            const minuteMatch = phrase.match(/(\d+|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty|fifty)\s*minute/);
+            const secondMatch = phrase.match(/(\d+|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty|fifty)\s*second/);
+
+            if (minuteMatch) {
+                const rawMin = minuteMatch[1];
+                minutesFound = parseInt(rawMin, 10) || textualNumbers[rawMin] || 0;
+            }
+
+            if (secondMatch) {
+                const rawSec = secondMatch[1];
+                secondsFound = parseInt(rawSec, 10) || textualNumbers[rawSec] || 0;
+            }
+
+            if (!minuteMatch && !secondMatch) {
+                const digitMatches = phrase.match(/\d+/);
+                if (digitMatches) {
+                    secondsFound = parseInt(digitMatches[0], 10);
+                } else {
+                    for (let key in textualNumbers) {
+                        if (phrase.includes(key)) { secondsFound = textualNumbers[key]; break; }
+                    }
+                }
+                if (phrase.includes("minute")) {
+                    minutesFound = secondsFound;
+                    secondsFound = 0;
+                }
+            }
+
+            totalSecondsToSkip = (minutesFound * 60) + secondsFound;
+
+            if (totalSecondsToSkip === 0) {
+                speakAudioFeedback("I couldn't hear the amount of time to skip.");
+                return;
+            }
+
+            secondsRemaining -= totalSecondsToSkip;
+            if (secondsRemaining <= 0) secondsRemaining = 0;
+            
+            renderDigitsUI();
+
+            let feedbackPhrase = "Skipped forward ";
+            if (minutesFound > 0) feedbackPhrase += `${minutesFound} minute${minutesFound === 1 ? '' : 's'} `;
+            if (secondsFound > 0) feedbackPhrase += `${secondsFound} second${secondsFound === 1 ? '' : 's'}`;
+            if (minutesFound === 0 && secondsFound === 0) feedbackPhrase += `${totalSecondsToSkip} seconds`;
+            speakAudioFeedback(feedbackPhrase.trim() + ".");
+
+            if (secondsRemaining === 0) {
+                clearInterval(countdownInterval);
+                isRunning = false;
+                handleCycleCompletion();
+            }
+        }
+
+        function handleStartCommand(targetMode) {
+            pauseClockExecution();
+            resetModeValues(targetMode);
+            startClockExecution();
+            speakAudioFeedback(`Starting ${targetMode} countdown.`);
+        }
+
+        function resetModeValues(targetMode) {
+            currentMode = targetMode;
+            if (currentMode === "focus") {
+                secondsRemaining = focusBlockMinutes * 60;
+                timerCard.className = "focus-active";
+                modeLabel.innerText = "Focus Block";
+            } else {
+                secondsRemaining = breakIntervalMinutes * 60;
+                timerCard.className = "break-active";
+                modeLabel.innerText = "Break Interval";
+            }
+            renderDigitsUI();
+        }
+
+        function startClockExecution() {
+            if (isRunning) return;
+            isRunning = true;
+            countdownInterval = setInterval(() => {
+                if (secondsRemaining > 0) {
+                    secondsRemaining--;
+                    renderDigitsUI();
+                }
+
+                if (secondsRemaining <= 0) {
+                    clearInterval(countdownInterval);
+                    isRunning = false;
+                    handleCycleCompletion();
+                }
+            }, 1000);
+        }
+
+        function pauseClockExecution() {
+            clearInterval(countdownInterval);
+            isRunning = false;
+        }
+
+        function renderDigitsUI() {
+            const mins = Math.floor(secondsRemaining / 60);
+            const secs = secondsRemaining % 60;
+            digitsDisplay.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function reportTimeRemainingAloud() {
+            const mins = Math.floor(secondsRemaining / 60);
+            const secs = secondsRemaining % 60;
+            let phrase = mins === 0 ? `${secs} seconds remaining.` : `${mins} minutes and ${secs} seconds remaining.`;
+            speakAudioFeedback(`The active ${currentMode} session has ${phrase}`);
+        }
+
+        function handleCycleCompletion() {
+            playSoundNotification('alarm');
+            
+            setTimeout(() => {
+                if (currentMode === "focus") {
+                    speakAudioFeedback("Focus block complete. Please say, start break, or use the touch console to move to your resting cycle.");
+                    currentMode = "break";
+                    timerCard.className = "break-active";
+                    modeLabel.innerText = "Break Pending Approval";
+                    secondsRemaining = breakIntervalMinutes * 60;
+                    renderDigitsUI();
+                } else {
+                    speakAudioFeedback("Break finished. Say, start focus, or tap the button to initialize your next production sequence.");
+                    currentMode = "focus";
+                    timerCard.className = "focus-active";
+                    modeLabel.innerText = "Focus Pending Approval";
+                    secondsRemaining = focusBlockMinutes * 60;
+                    renderDigitsUI();
+                }
+            }, 1000);
+        }
+
+        function speakAudioFeedback(phraseText) {
+            if ('speechSynthesis' in window) {
+                if (speechRecognizer && isRunning) {
+                    recognitionExplicitlyClosed = true;
+                    try { speechRecognizer.stop(); } catch(e){}
+                }
+
+                window.webkitSpeechSynthesis ? window.webkitSpeechSynthesis.cancel() : window.speechSynthesis.cancel();
+                const speechObject = new SpeechSynthesisUtterance(phraseText);
+                speechObject.rate = 1.05;
+
+                speechObject.onend = () => {
+                    recognitionExplicitlyClosed = false;
+                    if (speechRecognizer) {
+                        try { speechRecognizer.start(); } catch(e){}
+                    }
+                };
+
+                window.speechSynthesis.speak(speechObject);
+            }
+        }
+
+        window.addEventListener('load', () => {
+            initAmbientCompanion();
+        });
+    </script>
+</body>
+</html>
